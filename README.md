@@ -1,1 +1,197 @@
-# YouTube-Tap-Game
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Speed Tap Challenge</title>
+  
+  <!-- YouTube Playables SDK -->
+  <script src="https://www.youtube.com/game_api/v1"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #121212;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    canvas {
+      background-color: #1e1e1e;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="gameContainer">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<script>
+  // 1. Safe YouTube Playables SDK Handling
+  let ytGameHooks = {
+    isPaused: false,
+    isAudioEnabled: true
+  };
+
+  // Helper function to safely check if SDK exists
+  function isYTReady() {
+    return typeof ytgame !== 'undefined' && ytgame.game;
+  }
+
+  // 2. Canvas & Responsive Layout setup
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    canvas.width = Math.min(window.innerWidth, 600);
+    canvas.height = Math.min(window.innerHeight, 900);
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // 3. Game State & Logic
+  let score = 0;
+  let timeLeft = 15;
+  let gameState = 'START'; // 'START', 'PLAYING', 'GAMEOVER'
+  let target = { x: 0, y: 0, radius: 40, color: '#FF0055' };
+  let timerInterval = null;
+
+  function spawnTarget() {
+    const padding = target.radius + 20;
+    target.x = padding + Math.random() * (canvas.width - padding * 2);
+    target.y = padding + 100 + Math.random() * (canvas.height - padding * 2 - 100);
+  }
+
+  function startGame() {
+    score = 0;
+    timeLeft = 15;
+    gameState = 'PLAYING';
+    spawnTarget();
+
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      if (!ytGameHooks.isPaused && gameState === 'PLAYING') {
+        timeLeft--;
+        if (timeLeft <= 0) {
+          gameState = 'GAMEOVER';
+          clearInterval(timerInterval);
+        }
+      }
+    }, 1000);
+  }
+
+  function handleInput(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    if (gameState === 'START' || gameState === 'GAMEOVER') {
+      startGame();
+      return;
+    }
+
+    if (gameState === 'PLAYING' && !ytGameHooks.isPaused) {
+      const dist = Math.hypot(x - target.x, y - target.y);
+      if (dist < target.radius) {
+        score += 10;
+        spawnTarget();
+      }
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => handleInput(e.clientX, e.clientY));
+
+  // 4. Render Loop
+  function draw() {
+    ctx.fillStyle = '#181818';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 24px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Score: ${score}`, 20, 40);
+
+    ctx.textAlign = 'right';
+    ctx.fillText(`Time: ${timeLeft}s`, canvas.width - 20, 40);
+
+    if (gameState === 'START') {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#FFD700';
+      ctx.font = 'bold 32px Arial';
+      ctx.fillText('SPEED TAP', canvas.width / 2, canvas.height / 2 - 30);
+      
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '18px Arial';
+      ctx.fillText('Tap targets as fast as you can!', canvas.width / 2, canvas.height / 2 + 10);
+      ctx.fillText('Tap anywhere to Start', canvas.width / 2, canvas.height / 2 + 50);
+
+    } else if (gameState === 'PLAYING') {
+      if (ytGameHooks.isPaused) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText('PAUSED', canvas.width / 2, canvas.height / 2);
+      } else {
+        ctx.beginPath();
+        ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+        ctx.fillStyle = target.color;
+        ctx.fill();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.stroke();
+        ctx.closePath();
+      }
+
+    } else if (gameState === 'GAMEOVER') {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#FF5555';
+      ctx.font = 'bold 32px Arial';
+      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 30);
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '22px Arial';
+      ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2 + 10);
+      ctx.fillText('Tap anywhere to Play Again', canvas.width / 2, canvas.height / 2 + 50);
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  // Initial draw execution
+  draw();
+
+  // Safely trigger YouTube lifecycle events after load
+  window.addEventListener('load', () => {
+    if (isYTReady()) {
+      ytgame.game.firstFrameReady();
+      ytgame.game.gameReady();
+
+      ytgame.game.onPause(() => { ytGameHooks.isPaused = true; });
+      ytgame.game.onResume(() => { ytGameHooks.isPaused = false; });
+      ytgame.game.onAudioEnabledChange((enabled) => { ytGameHooks.isAudioEnabled = enabled; });
+    }
+  });
+</script>
+</body>
+</html>
